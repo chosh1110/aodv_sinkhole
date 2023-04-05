@@ -141,7 +141,6 @@ int main() {
         for (auto node : nodes) {
             threads.push_back(thread(&Node::move, node, ref(nodes)));
         }
-        printf("Hellow");
         for (auto& thread : threads) {
             thread.join();
         }
