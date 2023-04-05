@@ -133,10 +133,18 @@ public:
 
             for (auto neighbor : this->getNeighbor()) {
                 for (auto node : nodes) {
-                    if (neighbor == node->getId()) {
+                    if (node != this) {
+                        double distance = sqrt(pow(node->node_x - this->node_x, 2) + pow(node->node_y - this->node_y, 2));
+                        if (distance > TRANSMISSION_RANGE) {
+                            printf("더 길다@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+                            printf("Source :%2d | Destination:%2d | RREQ_hop:%2d | RREQ_des_ip:%2d | RREQ_des_seq:%2d | RREQ_org_ip:%2d | RREQ_org_seq:%2d\n", this->getId(), node->getId(), rreq.hop, rreq.des_ip, rreq.des_seq, rreq.org_ip, rreq.org_seq);
+                            continue;
+                        }
+                    }
+                    /*if (neighbor == node->getId()) {
                         node->receive_rreq(rreq);
                         printf("Source :%2d | Destination:%2d | RREQ_hop:%2d | RREQ_des_ip:%2d | RREQ_des_seq:%2d | RREQ_org_ip:%2d | RREQ_org_seq:%2d\n", this->getId(), node->getId(), rreq.hop, rreq.des_ip, rreq.des_seq, rreq.org_ip, rreq.org_seq);
-                    }
+                    }*/
                 }
             }
         }
@@ -187,12 +195,13 @@ int main() {
         
         for (auto node : nodes) {
             threads.push_back(thread(&Node::move, node, ref(nodes)));
-            //threads.push_back(thread(&Node::send_rreq, node, ref(nodes)));
+            threads.push_back(thread(&Node::hello_packet, node, ref(nodes)));
+            threads.push_back(thread(&Node::send_rreq, node, ref(nodes)));
         }
-        for (auto node : nodes) {
+        /*for (auto node : nodes) {
             threads.push_back(thread(&Node::hello_packet, node, ref(nodes)));
             //threads.push_back(thread(&Node::send_rreq, node, ref(nodes)));
-        }
+        }*/
 
         for (auto& thread : threads) {
             thread.join();
