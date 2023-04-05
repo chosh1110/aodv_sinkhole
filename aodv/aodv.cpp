@@ -7,11 +7,11 @@
 #include <thread>
 #include <unordered_map>
 #include <time.h>
-#include<windows.h>
+#include <windows.h>
 #include <random>
-#include<stdlib.h>
+#include <stdlib.h>
+#include <queue>
 using namespace std;
-
 const int NETWORK_SIZE = 50;
 const int NODE_COUNT = 10;
 const int TRANSMISSION_RANGE = 15;
@@ -21,6 +21,17 @@ struct RREQ {
     int des_seq;
     int org_ip;
     int org_seq;
+};
+struct RREP {
+    int hop;
+    int dest_ip;
+    int dest_seq;
+    int org_ip;
+    int life_time;
+};
+struct RERR {
+    int un_dest_ip;
+    int un_dest_seq;
 };
 class Node {
     int node_x;
