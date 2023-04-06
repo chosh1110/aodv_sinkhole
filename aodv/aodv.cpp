@@ -65,7 +65,7 @@ public:
     vector<int> getNeighbor() {
         return neighbor;
     }
-    void move(const vector<Node*>& nodes) {
+    void move(const vector<Node*>& nodes) {//노드 랜덤으로 움직이는 함수
         static default_random_engine generator;
         static uniform_int_distribution<int> distribution(-1,1);
 
@@ -96,24 +96,27 @@ public:
         node_y = max(0, min(NETWORK_SIZE - 1, node_y));
     }
 
-    void hello_packet(const vector<Node*>& nodes) {
+    void hello_packet(const vector<Node*>& nodes) {//이웃노드 찾는 함수
         this->neighbor.clear();
         for (auto node : nodes) {
             if (node != this) {
                 double distance = sqrt(pow(node->node_x - this->node_x, 2) + pow(node->node_y - this->node_y, 2));
-                printf("S: %2d D: %2d Distance:%f\n", this->getId(), node->getId(),distance);
+                //printf("S: %2d D: %2d Distance:%f\n", this->getId(), node->getId(),distance);
                 if (distance <= TRANSMISSION_RANGE) {
                     this->neighbor.push_back(node->id);                    
                 }
             }
         }
     }
-    void send_rreq(const vector<Node*>& nodes) {
+    void send_rreq(const vector<Node*>& nodes) {//RREQ Broadcast함수
+        if (this->getNeighbor().empty()) {
+            return;
+        }
         RREQ rreq;
         static default_random_engine generator;
         static uniform_int_distribution<int> distribution(0, 100);
         int num = distribution(generator);
-        if (num > 80) {
+        if (num > 0) {
             static uniform_int_distribution<int> distribution(0, NODE_COUNT-1);
             rreq.hop += 1;
             for (int i = 0; i < NODE_COUNT; i++)
@@ -136,25 +139,24 @@ public:
                     if (node != this) {
                         double distance = sqrt(pow(node->node_x - this->node_x, 2) + pow(node->node_y - this->node_y, 2));
                         if (distance > TRANSMISSION_RANGE) {
-                            printf("더 길다@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
-                            printf("Source :%2d | Destination:%2d | RREQ_hop:%2d | RREQ_des_ip:%2d | RREQ_des_seq:%2d | RREQ_org_ip:%2d | RREQ_org_seq:%2d\n", this->getId(), node->getId(), rreq.hop, rreq.des_ip, rreq.des_seq, rreq.org_ip, rreq.org_seq);
                             continue;
                         }
+                        else if (neighbor == node->getId()) {
+                            printf("Node %2d sending RREQ to %2d\n", this->getId(), neighbor);
+                            node->receive_rreq(rreq);
+                        }
                     }
-                    /*if (neighbor == node->getId()) {
-                        node->receive_rreq(rreq);
-                        printf("Source :%2d | Destination:%2d | RREQ_hop:%2d | RREQ_des_ip:%2d | RREQ_des_seq:%2d | RREQ_org_ip:%2d | RREQ_org_seq:%2d\n", this->getId(), node->getId(), rreq.hop, rreq.des_ip, rreq.des_seq, rreq.org_ip, rreq.org_seq);
-                    }*/
                 }
             }
         }
     }
-    void receive_rreq(RREQ rreq) {
+    void receive_rreq(RREQ rreq) {//RREQ 수신 함수
         if (rreq.des_ip == this->getId()) {
             //목적지 도착
         }
         else {
             this->buffer.push(rreq);
+            //printf("Node %2d received RREQ from %2d\n", this->getId(),rreq.org_ip);
         }
     }
 };
