@@ -19,7 +19,7 @@
 using namespace std;
 
 const int NETWORK_SIZE = 30;
-const int NODE_COUNT = 10;
+const int NODE_COUNT = 20;
 const double TRANSMISSION_RANGE = 10.0;
 
 mutex mtx;
@@ -146,20 +146,42 @@ public:
                 }
             }
         }
+        for (auto itr : routing_table) {
+            int key = itr.first;
+            RoutingTable value = itr.second;
+
+            int nexthop = value.nexthop;
+            bool exist = false;
+            for (auto neighbor_node : neighbor) {
+                if (nexthop == neighbor_node) {
+                    exist = true;
+                }
+            }
+            if (exist == false) {
+                cout << "#CAUTION# ROUTE ERROR in NODE " << this->getId() <<" DESTINATION NODE "<<key << " NEXT HOP NODE " << nexthop << endl;
+                this->routing_table.erase(key);
+                break;
+            }
+        }
     }
     void generate_rreq(const vector<Node*>& nodes) {
-        /*srand(time(NULL));
-        if (rand() % 100 >= 30) {
-            return;
-        }*/
-        if (this->getId() != 1) {
+        srand(time(NULL));
+        if (this->getId()!=1) {
             return;
         }
+        /*if (this->getId() != 1) {
+            return;
+        }*/
         RREQ rreq;
-        int destination = rand() % NODE_COUNT;
+        int destination = 8;
         while (destination == this->getId()) {
             srand(time(NULL));
             destination = rand() % NODE_COUNT;
+        }
+        auto route = routing_table.find(destination);
+        if (route != routing_table.end()) {
+            cout << "Route Exist | DESTINATION NODE -> Node " << destination << " NEXT HOP -> Node " << route->second.nexthop<<endl;
+            return;
         }
         rreq.des_ip = destination;
         rreq.des_seq++;
@@ -170,15 +192,14 @@ public:
         /*if (rreq.org_seq > 1) {
             return;
         }*/
-        cout << "Node " << this->getId() << " generated RREQ DESTINATION Node -> "<<rreq.des_ip << endl;
+        cout << "Node " << this->getId() << " generated RREQ DESTINATION Node -> "<<rreq.des_ip <<" SEQUENCE NUM -> "<<rreq.org_seq << endl;
 
         broadcast_rreq(rreq, nodes);
     }
 
-
     void broadcast_rreq(RREQ rreq, const vector<Node*>& nodes) {
         // Lock mutex to prevent multiple threads from accessing the same node's buffer simultaneously
-        unique_lock<mutex> lck(mtx);
+        //unique_lock<mutex> lck(mtx);
 
         for (auto node : nodes) {
             // Check if node is within transmission range and not the same node as the sender
@@ -220,7 +241,7 @@ public:
             RREQ rreq = rreq_buffer.front();
             rreq_buffer.pop();
             
-            cout << "Node " << this->getId() << "is receiving RREQ from Node " << rreq.prev_hop <<" RREQ SEQ_NUM: " << rreq.org_seq<< endl;
+            //cout << "Node " << this->getId() << "is receiving RREQ from Node " << rreq.prev_hop <<" RREQ SEQ_NUM: " << rreq.org_seq<< endl;
             // Check if RREQ has already been received
             if (rreq.org_ip == this->getId()) {
                 return;
@@ -235,14 +256,14 @@ public:
                     // TODO: send RREP back to originator
                     RREP rrep;
                     rrep.dest_ip = this->getId();
-                    rrep.dest_seq += rrep_count;
-                    rrep.hop = rreq.hop;
                     rrep_count++;
+                    rrep.dest_seq += rrep_count;
+                    rrep.hop = rreq.hop-1;
                     rrep.org_ip = rreq.org_ip;
                     rrep.org_seq = rreq.org_seq;
                     cout << "Congraulation!!!!!!!! Node " << this->getId() << " received RREQ from Node " << rreq.prev_hop << " and is the destination node Seq:" << rreq.org_seq << endl;
                     //system("PAUSE");
-                    cout << "Node "<<this->getId()<<" Previous Hop -> " << previous_hop_rreq[make_tuple(rrep.dest_ip, rrep.org_ip, rrep.org_seq)] << endl;
+                    cout << "DESTINATION Node "<<this->getId()<<" RREQ Previous Hop -> " << previous_hop_rreq[make_tuple(rrep.dest_ip, rrep.org_ip, rrep.org_seq)] << endl;
                     for (auto node : nodes) {
                         if (node->getId() == this->previous_hop_rreq[make_tuple(rreq.des_ip, rreq.org_ip, rreq.org_seq)]) {
                             rrep.prev_hop = this->getId();
@@ -274,8 +295,8 @@ public:
             cout << "RREP Previous Hop -> " << previous_hop_rrep[make_tuple(rrep.dest_ip, rrep.org_ip, rrep.org_seq)] << endl;
 
             if (rrep.org_ip == this->getId()) {
-                cout <<"####################NODE "<<this->getId() << " Route Discovery Finished SOURCE NODE: "<<rrep.org_ip<<" DESTINATION NODE: "<<rrep.dest_ip << endl;
-                cout << "Node " << this->getId() << " storing route information, Destination -> Node " << rrep.dest_ip << " Next Hop -> Node " << previous_hop_rrep[make_tuple(rrep.dest_ip, rrep.org_ip, rrep.org_seq)] << endl;
+                cout <<"NODE "<<this->getId() << " Route Discovery Finished SOURCE NODE : "<<rrep.org_ip<<" DESTINATION NODE : "<<rrep.dest_ip << " SEQUENCE NUMBER : "<<rrep.org_seq<<endl;
+                //cout << "Node " << this->getId() << " storing route information, Destination -> Node " << rrep.dest_ip << " Next Hop -> Node " << previous_hop_rrep[make_tuple(rrep.dest_ip, rrep.org_ip, rrep.org_seq)] << endl;
                 RoutingTable route;
                 route.dest_seq = rrep.dest_seq;
                 route.hop = rrep.hop;
@@ -285,18 +306,20 @@ public:
                 return;
             }
             if (rrep.org_ip != this->getId()) {
+                rrep.hop--;
+                cout << "Node " << this->getId() << "is " << rrep.hop << " hop away from source Node "<<rrep.org_ip << endl;
                 for (auto node : nodes) {
                     if (node != this && sqrt(pow(node->node_x - this->node_x, 2) + pow(node->node_y - this->node_y, 2)) <= TRANSMISSION_RANGE) {
                         if (node->getId() == this->previous_hop_rreq[make_tuple(rrep.dest_ip, rrep.org_ip, rrep.org_seq)]) {
                             rrep.prev_hop = this->getId();
                             node->rrep_buffer.push(rrep);
-                            cout << "Node " << this->getId() << " storing route information, Destination -> Node " << rrep.dest_ip << " Next Hop -> Node " << previous_hop_rrep[make_tuple(rrep.dest_ip, rrep.org_ip, rrep.org_seq)] << endl;
+                            //cout << "Node " << this->getId() << " storing route information, Destination -> Node " << rrep.dest_ip << " Next Hop -> Node " << previous_hop_rrep[make_tuple(rrep.dest_ip, rrep.org_ip, rrep.org_seq)] << endl;
                             RoutingTable route;
                             route.dest_seq = rrep.dest_seq;
                             route.hop = rrep.hop;
                             route.nexthop = previous_hop_rrep[make_tuple(rrep.dest_ip, rrep.org_ip, rrep.org_seq)];
                             routing_table[rrep.dest_ip] = route;
-                            cout << "Complete storing route information Node " << this->getId() << " Destination -> Node " << rrep.dest_ip << " Next Hop -> Node " << routing_table[rrep.dest_ip].nexthop <<"Destination Sequence -> "<<routing_table[rrep.dest_ip].dest_seq << endl;
+                            //cout << "Complete storing route information Node " << this->getId() << " Destination -> Node " << rrep.dest_ip << " Next Hop -> Node " << routing_table[rrep.dest_ip].nexthop <<"Destination Sequence -> "<<routing_table[rrep.dest_ip].dest_seq << endl;
                             cout << "Node " << this->getId() << " sent RREP to Node " << node->getId() << " DESTINATION NODE -> "<<rrep.dest_ip<<" SEQUENCE NUMBER -> "<<rrep.dest_seq << endl;
                         }
                     }
@@ -405,7 +428,7 @@ int main() {
         }*/
         // Print the network grid
         printNetwork(nodes);
-        cout << endl;
+         cout << endl;
     }
     return 0;
 }
