@@ -18,9 +18,9 @@
 #include <map>
 using namespace std;
 
-const int NETWORK_SIZE = 30;
+const int NETWORK_SIZE = 100;
 const int NODE_COUNT = 10;
-const double TRANSMISSION_RANGE = 10.0;
+const double TRANSMISSION_RANGE = 50;
 
 mutex mtx;
 
@@ -68,6 +68,8 @@ class Node {
     int prev_org_seq = 0;
     int rrep_count = 0;
     int cnt = 0;
+    int data_sent_cnt = 0;
+    int data_forwarded_cnt = 0;
     vector<int> neighbor;
     queue<RREQ> rreq_buffer;
     queue<RREP> rrep_buffer;
@@ -99,6 +101,12 @@ public:
     int getId() {
         return id;
     }
+    int getDataSentCnt() {
+        return data_sent_cnt;
+    }
+    int getForwardedSentCnt() {
+        return data_forwarded_cnt;
+    }
     queue<RREQ> getRREQBuffer() {
         return rreq_buffer;
     }
@@ -115,8 +123,9 @@ public:
         return routing_table;
     }
     void move(const vector<Node*>& nodes) {
+        srand(time(NULL));
         static default_random_engine generator;
-        static uniform_int_distribution<int> distribution(-1, 1);
+        static uniform_int_distribution<int> distribution(-3,3);
 
         // Calculate new position
         int new_x = node_x + distribution(generator);
@@ -167,7 +176,7 @@ public:
                 }
             }
             if (exist == false) {
-                cout << "#CAUTION# ROUTE ERROR in NODE " << this->getId() <<" DESTINATION NODE "<<key << " NEXT HOP NODE " << nexthop << endl;
+                //cout << "#CAUTION# ROUTE ERROR in NODE " << this->getId() <<" DESTINATION NODE "<<key << " NEXT HOP NODE " << nexthop << endl;
                 this->routing_table.erase(key);
                 break;
             }
@@ -178,7 +187,17 @@ public:
             return;
         }
         MESSAGE msg;
-        int destination = 8;
+        srand(time(NULL));
+        int destination = rand()%NODE_COUNT;
+        while (1) {
+            if (destination == this->getId()) {
+                destination = rand() % NODE_COUNT;
+            }
+            else {
+                break;
+            }
+        }
+        
         msg.des_ip = destination;
         msg.org_ip = this->getId();
         string content = "This is the message from Node " + to_string(this->getId());
@@ -186,14 +205,14 @@ public:
         
         auto route = routing_table.find(destination);
         if (route != routing_table.end()) {
-            cout << "Route Exist | DESTINATION NODE -> Node " << destination << " NEXT HOP -> Node " << route->second.nexthop << endl;
+            //cout << "Route Exist | SOURCE NODE -> Node "<<msg.org_ip<<" | DESTINATION NODE -> Node " << destination << " NEXT HOP -> Node " << route->second.nexthop << endl;
             for (auto node : nodes) {
                 if (node->getId() == route->second.nexthop) {
-                    cout << "Send Message to Node " << route->second.nexthop << endl;
+                    //cout << "Send Message to Node " << route->second.nexthop << endl;
                     node->msg_buffer.push(msg);
+                    this->data_sent_cnt++;
                 }
             }
-            
         }
         else {
             this->generate_rreq(nodes, destination);
@@ -219,7 +238,7 @@ public:
         /*if (rreq.org_seq > 1) {
             return;
         }*/
-        cout << "Node " << this->getId() << " generated RREQ DESTINATION Node -> "<<rreq.des_ip <<" SEQUENCE NUM -> "<<rreq.org_seq << endl;
+        //cout << "Node " << this->getId() << " generated RREQ DESTINATION Node -> "<<rreq.des_ip <<" SEQUENCE NUM -> "<<rreq.org_seq << endl;
 
         broadcast_rreq(rreq, nodes);
     }
@@ -264,7 +283,6 @@ public:
         }
 
         while (!rreq_buffer.empty()) {
-
             RREQ rreq = rreq_buffer.front();
             rreq_buffer.pop();
             
@@ -350,23 +368,27 @@ public:
                     
                 }
             }
-            
         }
         while (!msg_buffer.empty()) {
             //cout << "Checking MSG BUFFER"<<endl;
-            MESSAGE msg = msg_buffer.front();
+            MESSAGE msg = msg_buffer.front(); 
             msg_buffer.pop();
-            cout << "Node " << this->getId() << " received MESSAGE | SOURCE -> Node " << msg.org_ip << " | DESTINATION -> Node " << msg.des_ip<<" | CONTENT -> "<<msg.message << endl;
+            //cout << "Node " << this->getId() << " received MESSAGE | SOURCE -> Node " << msg.org_ip << " | DESTINATION -> Node " << msg.des_ip<<" | CONTENT -> "<<msg.message << endl;
             if (this->getId() == msg.des_ip) {
-                cout << "MESSAGE FORWARDED COMPLETE"<<" | RECEIVED -> Node "<<this->getId()<<" | SOUCRE->Node "<<msg.org_ip<<" | DESTINATION->Node "<<msg.des_ip <<" | CONTENT -> "<<msg.message << endl;
-                system("pause");
+                //cout << "MESSAGE FORWARDING COMPLETE"<<" | RECEIVED -> Node "<<this->getId()<<" | SOUCRE->Node "<<msg.org_ip<<" | DESTINATION->Node "<<msg.des_ip <<" | CONTENT -> "<<msg.message << endl;
+                for (auto node : nodes) {
+                    if (node->getId() == msg.org_ip) {
+                        node->data_forwarded_cnt++;
+                    }
+                }
+                //system("pause");
             }
             else {
                 auto route = routing_table.find(msg.des_ip);
                 if (route != routing_table.end()) {
                     for (auto node : nodes) {
                         if (node->getId() == route->second.nexthop) {
-                            cout << "Send Message to Node " << route->second.nexthop << endl;
+                            //cout << "Send Message to Node " << route->second.nexthop << endl;
                             node->msg_buffer.push(msg);
                         }
                     }
@@ -395,7 +417,7 @@ void print_node_log(const vector<Node*>& nodes, int node_id) {
 }
 
 void printNetwork(const vector<Node*>& nodes) {
-    const int grid_size = 30;
+    const int grid_size = 16;
     char grid[grid_size][grid_size];
 
     // Initialize grid with dots
@@ -429,7 +451,8 @@ int main() {
     for (int i = 0; i < NODE_COUNT; i++) {
         nodes.push_back(new Node(i));
     }
-    while (1) {
+    for (int i = 0; i < 1000; i++)
+    {
         vector<thread> threads;
 
         for (auto node : nodes) {
@@ -440,10 +463,6 @@ int main() {
             }
             threads.clear();
             threads.push_back(thread(&Node::send_msg, node, ref(nodes)));
-            for (auto& thread : threads) {
-                thread.join();
-            }
-            threads.clear();
             for (auto node : nodes) {
                 threads.push_back(thread(&Node::check_buffer, node, ref(nodes)));
             }
@@ -460,9 +479,15 @@ int main() {
             }
             threads.clear();*/
         }
-        
-        // Print each node's neighbors and current position
+
         for (auto node : nodes) {
+            if (node->getDataSentCnt() == 0) {
+                continue;
+            }
+            cout << "Node " << node->getId() << " Packet Delivery Ratio -> " << double(node->getForwardedSentCnt()) / node->getDataSentCnt() * 100 << " %" << endl;
+        }
+
+        /*for (auto node : nodes) {
             printf("Node Id:%2d | X:%3d | Y:%3d | Neighbor:", node->getId(), node->getCurrent_x(), node->getCurrent_y());
             for (int i = 0; i < node->getNeighbor().size(); i++)
             {
@@ -475,11 +500,13 @@ int main() {
                 cout << "Node " << node->getId() << " routing table: Destination -> " << route.first << " Next Hop -> " << route.second.nexthop <<" Sequence Number -> "<<route.second.dest_seq << endl;
             }
         }
+        printNetwork(nodes);*/
+
         /*for (auto node : nodes) {
             print_node_log(nodes, node->getId());
         }*/
         // Print the network grid
-        printNetwork(nodes);
+        
         cout << endl;
     }
     return 0;
