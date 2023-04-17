@@ -18,9 +18,9 @@
 #include <map>
 using namespace std;
 
-const int NETWORK_SIZE = 100;
+const int NETWORK_SIZE = 16;
 const int NODE_COUNT = 10;
-const double TRANSMISSION_RANGE = 50;
+const double TRANSMISSION_RANGE = 8;
 
 mutex mtx;
 
@@ -125,7 +125,7 @@ public:
     void move(const vector<Node*>& nodes) {
         srand(time(NULL));
         static default_random_engine generator;
-        static uniform_int_distribution<int> distribution(-3,3);
+        static uniform_int_distribution<int> distribution(-1,1);
 
         // Calculate new position
         int new_x = node_x + distribution(generator);
@@ -154,7 +154,6 @@ public:
     }
 
     void hello_packet(const vector<Node*>& nodes) {
-        unique_lock<mutex> lck(mtx);
         this->neighbor.clear();
         for (auto node : nodes) {
             if (node != this) {
@@ -183,9 +182,10 @@ public:
         }
     }
     void send_msg(const vector<Node*>& nodes) {
-        if (this->getId() != 1) {
+        unique_lock<mutex> lck(mtx);
+        /*if (this->getId() != 1) {
             return;
-        }
+        }*/
         MESSAGE msg;
         srand(time(NULL));
         int destination = rand()%NODE_COUNT;
@@ -277,11 +277,10 @@ public:
         return same;
     }
     void check_buffer(vector<Node*>& nodes) {
+        
+        unique_lock<mutex> lck(mtx);
         // Lock mutex to prevent multiple threads from accessing the same node's buffer simultaneously
-        if (rreq_buffer.empty() and rrep_buffer.empty() and msg_buffer.empty()) {
-            return;
-        }
-
+        
         while (!rreq_buffer.empty()) {
             RREQ rreq = rreq_buffer.front();
             rreq_buffer.pop();
@@ -289,13 +288,13 @@ public:
             //cout << "Node " << this->getId() << "is receiving RREQ from Node " << rreq.prev_hop <<" RREQ SEQ_NUM: " << rreq.org_seq<< endl;
             // Check if RREQ has already been received
             if (rreq.org_ip == this->getId()) {
-                return;
+                continue;
             }
+
             if (!isFind(rreq, this->received_rreqs)) {
                 received_rreqs.push_back(rreq);
                 previous_hop_rreq[make_tuple(rreq.des_ip, rreq.org_ip, rreq.org_seq)] = rreq.prev_hop;//rreq를 보낸 노드를 저장
                 rreq.hop++;
-                
                 // Check if node is the destination node
                 if (rreq.des_ip == this->getId()) {
                     // TODO: send RREP back to originator
@@ -333,7 +332,7 @@ public:
             RREP rrep = rrep_buffer.front();
             rrep_buffer.pop();
             previous_hop_rrep[make_tuple(rrep.dest_ip, rrep.org_ip, rrep.org_seq)] = rrep.prev_hop;//rrep를 보낸 노드를 저장
-            //cout << "Node " << this->getId() << "is receiving RREP from Node " << rrep.prev_hop << endl;
+            //cout << "Node " << this->getId() << "is receiving RREP from Node " << rrep.prev_hop <<" | DESTINATION Node "<<rrep.dest_ip<<" | SOURCE Node "<<rrep.org_ip << endl;
             //cout << "RREP Previous Hop -> " << previous_hop_rrep[make_tuple(rrep.dest_ip, rrep.org_ip, rrep.org_seq)] << endl;
 
             if (rrep.org_ip == this->getId()) {
@@ -347,7 +346,7 @@ public:
                 //system("PAUSE");
                 return;
             }
-            if (rrep.org_ip != this->getId()) {
+            else if (rrep.org_ip != this->getId()) {
                 rrep.hop--;
                 //cout << "Node " << this->getId() << "is " << rrep.hop << " hop away from source Node "<<rrep.org_ip << endl;
                 for (auto node : nodes) {
@@ -361,6 +360,7 @@ public:
                             route.hop = rrep.hop;
                             route.nexthop = previous_hop_rrep[make_tuple(rrep.dest_ip, rrep.org_ip, rrep.org_seq)];
                             routing_table[rrep.dest_ip] = route;
+                            break;
                             //cout << "Complete storing route information Node " << this->getId() << " Destination -> Node " << rrep.dest_ip << " Next Hop -> Node " << routing_table[rrep.dest_ip].nexthop <<"Destination Sequence -> "<<routing_table[rrep.dest_ip].dest_seq << endl;
                             //cout << "Node " << this->getId() << " sent RREP to Node " << node->getId() << " DESTINATION NODE -> "<<rrep.dest_ip<<" SEQUENCE NUMBER -> "<<rrep.dest_seq << endl;
                         }
@@ -454,38 +454,16 @@ int main() {
     for (int i = 0; i < 1000; i++)
     {
         vector<thread> threads;
-
         for (auto node : nodes) {
             threads.push_back(thread(&Node::move, node, ref(nodes)));
             threads.push_back(thread(&Node::hello_packet, node, ref(nodes)));
-            for (auto& thread : threads) {
-                thread.join();
-            }
-            threads.clear();
             threads.push_back(thread(&Node::send_msg, node, ref(nodes)));
-            for (auto node : nodes) {
-                threads.push_back(thread(&Node::check_buffer, node, ref(nodes)));
-            }
-            
-            for (auto& thread : threads) {
-                thread.join();
-            }
-
-            threads.clear();
-
-            /*threads.push_back(thread(&Node::generate_rreq, node, ref(nodes)));
-            for (auto& thread : threads) {
-                thread.join();
-            }
-            threads.clear();*/
+            threads.push_back(thread(&Node::check_buffer, node, ref(nodes)));
         }
-
-        for (auto node : nodes) {
-            if (node->getDataSentCnt() == 0) {
-                continue;
-            }
-            cout << "Node " << node->getId() << " Packet Delivery Ratio -> " << double(node->getForwardedSentCnt()) / node->getDataSentCnt() * 100 << " %" << endl;
+        for (auto& thread : threads) {
+            thread.join();
         }
+        threads.clear();
 
         /*for (auto node : nodes) {
             printf("Node Id:%2d | X:%3d | Y:%3d | Neighbor:", node->getId(), node->getCurrent_x(), node->getCurrent_y());
@@ -506,8 +484,13 @@ int main() {
             print_node_log(nodes, node->getId());
         }*/
         // Print the network grid
-        
-        cout << endl;
+    }
+    for (auto node : nodes) {
+        if (node->getDataSentCnt() == 0) {
+            continue;
+        }
+        cout << "Node " << node->getId() << " Packet Delivery Ratio -> " << double(node->getForwardedSentCnt()) / node->getDataSentCnt() * 100 << " %" << endl;
     }
     return 0;
+
 }
