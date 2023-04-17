@@ -18,9 +18,9 @@
 #include <map>
 using namespace std;
 
-const int NETWORK_SIZE = 16;
-const int NODE_COUNT = 10;
-const double TRANSMISSION_RANGE = 8;
+const int NETWORK_SIZE = 1000;
+const int NODE_COUNT = 50;
+const double TRANSMISSION_RANGE = 250;
 
 mutex mtx;
 
@@ -451,7 +451,12 @@ int main() {
     for (int i = 0; i < NODE_COUNT; i++) {
         nodes.push_back(new Node(i));
     }
-    for (int i = 0; i < 1000; i++)
+    int simulation = 800;
+    double totalPdr = 0.0;
+    double maxPdr = 0.0;
+    double minPdr = 100.0;
+    cout << "AODV SINKHOLE SIMULATION START" << endl << endl;
+    for (int i = 0; i < simulation; i++)
     {
         vector<thread> threads;
         for (auto node : nodes) {
@@ -465,32 +470,39 @@ int main() {
         }
         threads.clear();
 
-        /*for (auto node : nodes) {
-            printf("Node Id:%2d | X:%3d | Y:%3d | Neighbor:", node->getId(), node->getCurrent_x(), node->getCurrent_y());
-            for (int i = 0; i < node->getNeighbor().size(); i++)
-            {
-                printf("%3d", node->getNeighbor().at(i));
+        cnt++;
+        double progress = double(cnt) / simulation * 100;
+        cout << "\x1b[1A\x1b[2K";
+        cout << "[";
+        int barWidth = 100;
+        int progressWidth = int(progress / 100 * barWidth);
+        for (int i = 0; i < barWidth; i++) {
+            if (i < progressWidth) {
+                cout << "=";
             }
-            printf("\n");
-        }
-        for (auto node : nodes) {
-            for (auto route : node->getRoutingTable()) {
-                cout << "Node " << node->getId() << " routing table: Destination -> " << route.first << " Next Hop -> " << route.second.nexthop <<" Sequence Number -> "<<route.second.dest_seq << endl;
+            else {
+                cout << " ";
             }
         }
-        printNetwork(nodes);*/
+        cout << "] " << int(progress) << " %\n";
 
-        /*for (auto node : nodes) {
-            print_node_log(nodes, node->getId());
-        }*/
-        // Print the network grid
     }
+    cout << "AODV SINKHOLE SIMULATION FINISHED" << endl;
+    cout << "RESULT: " << endl;
     for (auto node : nodes) {
         if (node->getDataSentCnt() == 0) {
             continue;
         }
-        cout << "Node " << node->getId() << " Packet Delivery Ratio -> " << double(node->getForwardedSentCnt()) / node->getDataSentCnt() * 100 << " %" << endl;
+        double pdr = double(node->getForwardedSentCnt()) / node->getDataSentCnt() * 100;
+        totalPdr += pdr;
+        maxPdr = max(maxPdr, pdr);
+        minPdr = min(minPdr, pdr);
+        cout << "Node " << node->getId() << " Packet Delivery Ratio -> " << pdr << " %" << endl;
     }
+    double avgPdr = totalPdr / double(NODE_COUNT);
+    cout << "Maximum PDR: " << maxPdr << " %" << endl;
+    cout << "Minimum PDR: " << minPdr << " %" << endl;
+    cout << "Average PDR: " << avgPdr << " %" << endl;
     return 0;
-
 }
+
